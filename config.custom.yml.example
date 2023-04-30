@@ -1,0 +1,16 @@
+cert: /client.pem
+token: {Adoption token}
+nvr_username: {NVR Username}
+nvr_password: {NVR Server}
+
+host: {NVR IP}
+cameras:
+    CAM_1:
+        type: custom
+        mac: 12:34:56:01:90
+        model: UVC G3
+        name: CAM_1
+        ip: 192.168.1.90
+        fw-version: UVC.S2L.v4.57.35.67.M_d45274d.221013.0543
+        source: '/custom.sh'
+        snapshot-url: http://192.168.3.121/cgi-bin/snapshot.cgi?stream=0&username=admin&password=123456

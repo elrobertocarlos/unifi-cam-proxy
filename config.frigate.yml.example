@@ -1,0 +1,49 @@
+cert: /client.pem
+token: {Adoption token}
+nvr_username: {NVR Username}
+nvr_password: {NVR Server}
+
+host: {NVR IP}
+cameras:
+    CAM_1:
+        type: frigate
+        mac: 12:34:56:78:90
+        model: UVC G3
+        name: CAM_1
+        ip: 192.168.3.121
+        fw-version: UVC.S2L.v4.57.35.67.M_d45274d.221013.0543
+        source: 'rtsp://192.168.3.216:8554/CAM_1'
+        snapshot-url: 'http://192.168.3.216:5000/api/CAM_1/latest.jpg'
+
+        mqtt-host: {MQTT Server}
+        mqtt-username: {MQTT Username}
+        mqtt-password: {MQTT Password}
+        frigate-camera: CAM_1
+    CAM_2:
+        type: frigate
+        mac: 12:34:56:78:91
+        model: UVC G3
+        name: CAM_2
+        ip: 192.168.3.248
+        fw-version: UVC.S2L.v4.57.35.67.M_d45274d.221013.0543
+        source: 'rtsp://192.168.3.216:8554/CAM_2'
+        snapshot-url: 'http://192.168.3.216:5000/api/CAM_2/latest.jpg'
+
+        mqtt-host: {MQTT Server}
+        mqtt-username: {MQTT Username}
+        mqtt-password: {MQTT Password}
+        frigate-camera: CAM_2
+    CAM_3:
+        type: frigate
+        mac: 12:34:56:78:92
+        model: UVC G3
+        name: CAM_3
+        ip: 192.168.3.105
+        fw-version: UVC.S2L.v4.57.35.67.M_d45274d.221013.0543
+        source: 'rtsp://192.168.3.216:8554/CAM_3'
+        snapshot-url: 'http://192.168.3.216:5000/api/CAM_3/latest.jpg'
+
+        mqtt-host: {MQTT Server}
+        mqtt-username: {MQTT Username}
+        mqtt-password: {MQTT Password}
+        frigate-camera: CAM_3
