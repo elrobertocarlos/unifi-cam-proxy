@@ -9,3 +9,6 @@ run/
 MANIFEST
 MANIFEST.in
 .pyre/
+*.bin
+*.mp4
+*.flv

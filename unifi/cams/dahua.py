@@ -1,4 +1,3 @@
-import argparse
 import logging
 import tempfile
 from pathlib import Path
@@ -11,75 +10,30 @@ from unifi.cams.base import RetryableError, SmartDetectObjectType, UnifiCamBase
 
 
 class DahuaCam(UnifiCamBase):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        super().__init__(args, logger)
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
+        super().__init__(logger, cert, token, host, opt)
         self.snapshot_dir = tempfile.mkdtemp()
-        if self.args.snapshot_channel is None:
-            self.args.snapshot_channel = self.args.channel - 1
-        if self.args.motion_index is None:
-            self.args.motion_index = self.args.snapshot_channel
+
+        self.channel = opt.get('channel')
+        self.snapshot_channel = opt.get('snapshot_channel', self.channel - 1)
+        self.motion_index = opt.get('motion_index', self.snapshot_channel)
+
+        self.ip = opt.get('ip')
+        self.username = opt.get('username')
+        self.password = opt.get('password')
 
         self.camera = AmcrestCamera(
-            self.args.ip, 80, self.args.username, self.args.password
+            self.ip, 80, self.username, self.password
         ).camera
 
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        super().add_parser(parser)
-        parser.add_argument(
-            "--username",
-            "-u",
-            required=True,
-            help="Camera username",
-        )
-        parser.add_argument(
-            "--password",
-            "-p",
-            required=True,
-            help="Camera password",
-        )
-        parser.add_argument(
-            "--channel",
-            "-c",
-            required=False,
-            type=int,
-            default=1,
-            help="Camera channel",
-        )
-        parser.add_argument(
-            "--snapshot-channel",
-            required=False,
-            type=int,
-            default=None,
-            help="Snapshot channel",
-        )
-        parser.add_argument(
-            "--main-stream",
-            required=False,
-            type=int,
-            default=0,
-            help="Main Stream subtype index",
-        )
-        parser.add_argument(
-            "--sub-stream",
-            required=False,
-            type=int,
-            default=1,
-            help="Sub Stream subtype index",
-        )
-        parser.add_argument(
-            "--motion-index",
-            required=False,
-            type=int,
-            default=None,
-            help="VideoMotion event index",
-        )
+        self.main_stream = opt.get('main_stream')
+        self.sub_stream = opt.get('sub_stream')
 
     async def get_snapshot(self) -> Path:
         img_file = Path(self.snapshot_dir, "screen.jpg")
         try:
             snapshot = await self.camera.async_snapshot(
-                channel=self.args.snapshot_channel
+                channel=self.snapshot_channel
             )
             with img_file.open("wb") as f:
                 f.write(snapshot)
@@ -89,7 +43,7 @@ class DahuaCam(UnifiCamBase):
         return img_file
 
     async def run(self) -> None:
-        if self.args.motion_index == -1:
+        if self.motion_index == -1:
             return
         while True:
             self.logger.info("Connecting to motion events API")
@@ -101,7 +55,7 @@ class DahuaCam(UnifiCamBase):
                     action = event[1].get("action")
                     index = event[1].get("index")
 
-                    if not index or int(index) != self.args.motion_index:
+                    if not index or int(index) != self.motion_index:
                         self.logger.debug(f"Skipping event {event}")
                         continue
 
@@ -122,12 +76,12 @@ class DahuaCam(UnifiCamBase):
 
     async def get_stream_source(self, stream_index: str) -> str:
         if stream_index == "video1":
-            subtype = self.args.main_stream
+            subtype = self.main_stream
         else:
-            subtype = self.args.sub_stream
+            subtype = self.sub_stream
         try:
             return await self.camera.async_rtsp_url(
-                channel=self.args.channel, typeno=subtype
+                channel=self.channel, typeno=subtype
             )
         except (CommError, httpx.RequestError):
             raise RetryableError("Could not generate RTSP URL")

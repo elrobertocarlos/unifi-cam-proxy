@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import logging
 import tempfile
@@ -14,33 +13,25 @@ from unifi.cams.base import UnifiCamBase
 
 
 class HikvisionCam(UnifiCamBase):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        super().__init__(args, logger)
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
+        super().__init__(logger, cert, token, host, opt)
         self.snapshot_dir = tempfile.mkdtemp()
         self.streams = {}
+        self.ip = opt.get('ip')
+        self.username = opt.get('username')
+        self.password = opt.get('password')
+
         self.cam = AsyncClient(
-            f"http://{self.args.ip}",
-            self.args.username,
-            self.args.password,
+            f"http://{self.ip}",
+            self.username,
+            self.password,
             timeout=None,
         )
-        self.channel = args.channel
-        self.substream = args.substream
+        self.channel = opt.get('channel')
+        self.substream = opt.get('substream')
         self.ptz_supported = False
         self.motion_in_progress: bool = False
         self._last_event_timestamp: Union[str, int] = 0
-
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        super().add_parser(parser)
-        parser.add_argument("--username", "-u", required=True, help="Camera username")
-        parser.add_argument("--password", "-p", required=True, help="Camera password")
-        parser.add_argument(
-            "--channel", "-c", default=1, type=int, help="Camera channel index"
-        )
-        parser.add_argument(
-            "--substream", "-s", default=3, type=int, help="Camera substream index"
-        )
 
     async def get_snapshot(self) -> Path:
         img_file = Path(self.snapshot_dir, "screen.jpg")
@@ -108,7 +99,7 @@ class HikvisionCam(UnifiCamBase):
             substream = self.substream
 
         return (
-            f"rtsp://{self.args.username}:{self.args.password}@{self.args.ip}:554"
+            f"rtsp://{self.username}:{self.password}@{self.ip}:554"
             f"/Streaming/Channels/{self.channel}0{substream}/"
         )
 

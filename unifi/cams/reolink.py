@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import tempfile
@@ -12,47 +11,23 @@ from unifi.cams.base import UnifiCamBase
 
 
 class Reolink(UnifiCamBase):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        super().__init__(args, logger)
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
+        super().__init__(logger, cert, token, host, opt)
         self.snapshot_dir: str = tempfile.mkdtemp()
         self.motion_in_progress: bool = False
-        self.substream = args.substream
+
+        self.username = opt.get('username')
+        self.password = opt.get('password')
+        self.channel = opt.get('channel')
+
+        self.stream = opt.get('stream')
+        self.substream = opt.get('substream')
         self.cam = reolinkapi.Camera(
-            ip=args.ip,
-            username=args.username,
-            password=args.password,
+            ip=self.ip,
+            username=self.username,
+            password=self.password,
         )
         self.stream_fps = self.get_stream_info(self.cam)
-
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        super().add_parser(parser)
-        parser.add_argument("--username", "-u", required=True, help="Camera username")
-        parser.add_argument("--password", "-p", required=True, help="Camera password")
-        parser.add_argument(
-            "--channel",
-            "-c",
-            default=0,
-            help="Camera channel (not needed, leaving for possible future)",
-        )
-
-        parser.add_argument(
-            "--stream",
-            "-m",
-            default="main",
-            type=str,
-            choices=["main", "sub"],
-            help="Stream profile to use for the higher quality stream",
-        )
-
-        parser.add_argument(
-            "--substream",
-            "-s",
-            default="sub",
-            type=str,
-            choices=["main", "sub"],
-            help="Stream profile to use for the lower quality stream",
-        )
 
     def get_stream_info(self, camera) -> tuple[int, int]:
         info = camera.get_recording_encoding()
@@ -64,10 +39,10 @@ class Reolink(UnifiCamBase):
     async def get_snapshot(self) -> Path:
         img_file = Path(self.snapshot_dir, "screen.jpg")
         url = (
-            f"http://{self.args.ip}"
-            f"/cgi-bin/api.cgi?cmd=Snap&channel={self.args.channel}"
-            f"&rs=6PHVjvf0UntSLbyT&user={self.args.username}"
-            f"&password={self.args.password}"
+            f"http://{self.ip}"
+            f"/cgi-bin/api.cgi?cmd=Snap&channel={self.channel}"
+            f"&rs=6PHVjvf0UntSLbyT&user={self.username}"
+            f"&password={self.password}"
         )
         self.logger.info(f"Grabbing snapshot: {url}")
         await self.fetch_to_file(url, img_file)
@@ -75,14 +50,14 @@ class Reolink(UnifiCamBase):
 
     async def run(self) -> None:
         url = (
-            f"http://{self.args.ip}"
-            f"/api.cgi?cmd=GetMdState&user={self.args.username}"
-            f"&password={self.args.password}"
+            f"http://{self.ip}"
+            f"/api.cgi?cmd=GetMdState&user={self.username}"
+            f"&password={self.password}"
         )
         encoded_url = URL(url, encoded=True)
 
         body = (
-            f'[{{ "cmd":"GetMdState", "param":{{ "channel":{self.args.channel} }} }}]'
+            f'[{{ "cmd":"GetMdState", "param":{{ "channel":{self.channel} }} }}]'
         )
         while True:
             self.logger.info(f"Connecting to motion events API: {url}")
@@ -138,11 +113,11 @@ class Reolink(UnifiCamBase):
 
     async def get_stream_source(self, stream_index: str) -> str:
         if stream_index == "video1":
-            stream = self.args.stream
+            stream = self.stream
         else:
-            stream = self.args.substream
+            stream = self.substream
 
         return (
-            f"rtsp://{self.args.username}:{self.args.password}@{self.args.ip}:554"
-            f"//h264Preview_{int(self.args.channel) + 1:02}_{stream}"
+            f"rtsp://{self.username}:{self.password}@{self.ip}:554"
+            f"//h264Preview_{int(self.channel) + 1:02}_{stream}"
         )

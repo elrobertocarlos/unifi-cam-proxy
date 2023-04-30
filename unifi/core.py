@@ -10,10 +10,10 @@ class RetryableError(Exception):
 
 
 class Core(object):
-    def __init__(self, args, camera, logger):
-        self.host = args.host
-        self.token = args.token
-        self.mac = args.mac
+    def __init__(self, logger, cert, host, token, opt, camera):
+        self.host = host
+        self.token = token
+        self.mac = opt['mac']
         self.logger = logger
         self.cam = camera
 
@@ -21,7 +21,7 @@ class Core(object):
         self.ssl_context = ssl.create_default_context()
         self.ssl_context.check_hostname = False
         self.ssl_context.verify_mode = ssl.CERT_NONE
-        self.ssl_context.load_cert_chain(args.cert, args.cert)
+        self.ssl_context.load_cert_chain(cert, cert)
 
     async def run(self) -> None:
         uri = "wss://{}:7442/camera/1.0/ws?token={}".format(self.host, self.token)

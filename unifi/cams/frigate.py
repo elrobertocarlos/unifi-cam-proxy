@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import logging
@@ -15,29 +14,20 @@ from unifi.cams.rtsp import RTSPCam
 
 
 class FrigateCam(RTSPCam):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        super().__init__(args, logger)
-        self.args = args
+
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
+        super().__init__(logger, cert, token, host, opt)
         self.event_id: Optional[str] = None
         self.event_label: Optional[str] = None
         self.event_snapshot_ready = None
 
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        super().add_parser(parser)
-        parser.add_argument("--mqtt-host", required=True, help="MQTT server")
-        parser.add_argument("--mqtt-port", default=1883, type=int, help="MQTT server")
-        parser.add_argument("--mqtt-username", required=False)
-        parser.add_argument("--mqtt-password", required=False)
-        parser.add_argument(
-            "--mqtt-prefix", default="frigate", type=str, help="Topic prefix"
-        )
-        parser.add_argument(
-            "--frigate-camera",
-            required=True,
-            type=str,
-            help="Name of camera in frigate",
-        )
+        self.mqtt_host = opt.get('mqtt-host')
+        self.mqtt_port = opt.get('mqtt-port', 1883)
+        self.mqtt_username = opt.get('mqtt-username')
+        self.mqtt_password = opt.get('mqtt-password')
+        self.mqtt_prefix = opt.get('mqtt_prefix', 'frigate')
+
+        self.frigate_camera = opt.get('frigate-camera')
 
     async def get_feature_flags(self) -> dict[str, Any]:
         return {
@@ -66,20 +56,20 @@ class FrigateCam(RTSPCam):
             nonlocal has_connected
             try:
                 async with Client(
-                    self.args.mqtt_host,
-                    port=self.args.mqtt_port,
-                    username=self.args.mqtt_username,
-                    password=self.args.mqtt_password,
+                    self.mqtt_host,
+                    port=self.mqtt_port,
+                    username=self.mqtt_username,
+                    password=self.mqtt_password,
                 ) as client:
                     has_connected = True
                     self.logger.info(
-                        f"Connected to {self.args.mqtt_host}:{self.args.mqtt_port}"
+                        f"Connected to {self.mqtt_host}:{self.mqtt_port}"
                     )
                     tasks = [
                         self.handle_detection_events(client),
                         self.handle_snapshot_events(client),
                     ]
-                    await client.subscribe(f"{self.args.mqtt_prefix}/#")
+                    await client.subscribe(f"{self.mqtt_prefix}/#")
                     await asyncio.gather(*tasks)
             except MqttError:
                 if not has_connected:
@@ -89,13 +79,13 @@ class FrigateCam(RTSPCam):
 
     async def handle_detection_events(self, client) -> None:
         async with client.filtered_messages(
-            f"{self.args.mqtt_prefix}/events"
+            f"{self.mqtt_prefix}/events"
         ) as messages:
             async for message in messages:
                 msg = message.payload.decode()
                 try:
                     frigate_msg = json.loads(message.payload.decode())
-                    if not frigate_msg["after"]["camera"] == self.args.frigate_camera:
+                    if not frigate_msg["after"]["camera"] == self.frigate_camera:
                         continue
 
                     label = frigate_msg["after"]["label"]
@@ -133,7 +123,7 @@ class FrigateCam(RTSPCam):
                     self.logger.exception(f"Could not decode payload: {msg}")
 
     async def handle_snapshot_events(self, client) -> None:
-        topic_fmt = f"{self.args.mqtt_prefix}/{self.args.frigate_camera}/{{}}/snapshot"
+        topic_fmt = f"{self.mqtt_prefix}/{self.frigate_camera}/{{}}/snapshot"
         async with client.filtered_messages(topic_fmt.format("+")) as messages:
             async for message in messages:
                 if (

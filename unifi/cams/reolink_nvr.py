@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import tempfile
@@ -11,37 +10,35 @@ from unifi.cams.base import UnifiCamBase
 
 
 class ReolinkNVRCam(UnifiCamBase):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        super().__init__(args, logger)
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
+        super().__init__(logger, cert, token, host, opt)
         self.snapshot_dir: str = tempfile.mkdtemp()
         self.motion_in_progress: bool = False
 
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        super().add_parser(parser)
-        parser.add_argument("--username", "-u", required=True, help="NVR username")
-        parser.add_argument("--password", "-p", required=True, help="NVR password")
-        parser.add_argument("--channel", "-c", required=True, help="NVR camera channel")
+        self.ip = opt.get('ip')
+        self.username = opt.get('username')
+        self.password = opt.get('password')
+        self.channel = opt.get('channel')
 
     async def get_snapshot(self) -> Path:
         img_file = Path(self.snapshot_dir, "screen.jpg")
         url = (
-            f"http://{self.args.ip}"
-            f"/api.cgi?cmd=Snap&user={self.args.username}&password={self.args.password}"
-            f"&rs=6PHVjvf0UntSLbyT&channel={self.args.channel}"
+            f"http://{self.ip}"
+            f"/api.cgi?cmd=Snap&user={self.username}&password={self.password}"
+            f"&rs=6PHVjvf0UntSLbyT&channel={self.channel}"
         )
         await self.fetch_to_file(url, img_file)
         return img_file
 
     async def run(self) -> None:
         url = (
-            f"http://{self.args.ip}"
-            f"/api.cgi?user={self.args.username}&password={self.args.password}"
+            f"http://{self.ip}"
+            f"/api.cgi?user={self.username}&password={self.password}"
         )
         encoded_url = URL(url, encoded=True)
 
         body = (
-            f'[{{ "cmd":"GetMdState", "param":{{ "channel":{self.args.channel} }} }}]'
+            f'[{{ "cmd":"GetMdState", "param":{{ "channel":{self.channel} }} }}]'
         )
         while True:
             self.logger.info(f"Connecting to motion events API: {url}")
@@ -86,6 +83,6 @@ class ReolinkNVRCam(UnifiCamBase):
 
     async def get_stream_source(self, stream_index: str) -> str:
         return (
-            f"rtsp://{self.args.username}:{self.args.password}@{self.args.ip}:554"
-            f"/h264Preview_{int(self.args.channel) + 1:02}_main"
+            f"rtsp://{self.username}:{self.password}@{self.ip}:554"
+            f"/h264Preview_{int(self.channel) + 1:02}_main"
         )

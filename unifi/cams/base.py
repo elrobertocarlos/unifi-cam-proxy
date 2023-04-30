@@ -1,11 +1,10 @@
-import argparse
+import sys
 import atexit
 import json
 import logging
 import shutil
 import ssl
 import subprocess
-import sys
 import tempfile
 import time
 import urllib
@@ -29,8 +28,7 @@ class SmartDetectObjectType(Enum):
 
 
 class UnifiCamBase(metaclass=ABCMeta):
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger) -> None:
-        self.args = args
+    def __init__(self, logger: logging.Logger, cert, token, host, opt) -> None:
         self.logger = logger
 
         self._msg_id: int = 0
@@ -46,26 +44,21 @@ class UnifiCamBase(metaclass=ABCMeta):
         self._ssl_context = ssl.create_default_context()
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
-        self._ssl_context.load_cert_chain(args.cert, args.cert)
+        self._ssl_context.load_cert_chain(cert, cert)
         self._session: Optional[websockets.legacy.client.WebSocketClientProtocol] = None
         atexit.register(self.close_streams)
 
         self._needs_flv_timestamps: bool = False
 
-    @classmethod
-    def add_parser(cls, parser: argparse.ArgumentParser) -> None:
-        parser.add_argument(
-            "--ffmpeg-args",
-            "-f",
-            default="-c:v copy -ar 32000 -ac 1 -codec:a aac -b:a 32k",
-            help="Transcoding args for `ffmpeg -i <src> <args> <dst>`",
-        )
-        parser.add_argument(
-            "--rtsp-transport",
-            default="tcp",
-            choices=["tcp", "udp", "http", "udp_multicast"],
-            help="RTSP transport protocol used by stream",
-        )
+        self.token = token
+        self.host = host
+        self.ffmpeg_args = opt.get('ffmpeg_args', '-c:v copy -ar 32000 -ac 1 -codec:a aac -b:a 32k')
+        self.rtsp_transport = opt.get('rtsp-transport', 'tcp')
+        self.name = opt.get('name', 'None')
+        self.ip = opt.get('ip', '192.168.1.10')
+        self.mac = opt.get('mac', '12:34:56:78:90')
+        self.model = opt.get('model', 'UVC G3')
+        self.fw_version = opt.get('fw_version', 'UVC.S2L.v4.49.5.67.0153fd3.220212.1702')
 
     async def _run(self, ws) -> None:
         self._session = ws
@@ -74,7 +67,7 @@ class UnifiCamBase(metaclass=ABCMeta):
             try:
                 msg = await ws.recv()
             except websockets.exceptions.ConnectionClosedError:
-                self.logger.info(f"Connection to {self.args.host} was closed.")
+                self.logger.info(f"Connection to {self.host} was closed.")
                 raise RetryableError()
 
             if msg is not None:
@@ -101,7 +94,7 @@ class UnifiCamBase(metaclass=ABCMeta):
         raise NotImplementedError("You need to write this!")
 
     def get_extra_ffmpeg_args(self, stream_index: str = "") -> str:
-        return self.args.ffmpeg_args
+        return self.ffmpeg_args
 
     async def get_feature_flags(self) -> dict[str, Any]:
         return {
@@ -229,22 +222,22 @@ class UnifiCamBase(metaclass=ABCMeta):
 
     async def init_adoption(self) -> None:
         self.logger.info(
-            f"Adopting with token [{self.args.token}] and mac [{self.args.mac}]"
+            f"Adopting with token [{self.token}] and mac [{self.mac}]"
         )
         await self.send(
             self.gen_response(
                 "ubnt_avclient_hello",
                 payload={
-                    "adoptionCode": self.args.token,
-                    "connectionHost": self.args.host,
+                    "adoptionCode": self.token,
+                    "connectionHost": self.host,
                     "connectionSecurePort": 7442,
-                    "fwVersion": self.args.fw_version,
+                    "fwVersion": self.fw_version,
                     "hwrev": 19,
                     "idleTime": 191.96,
-                    "ip": self.args.ip,
-                    "mac": self.args.mac,
-                    "model": self.args.model,
-                    "name": self.args.name,
+                    "ip": self.ip,
+                    "mac": self.mac,
+                    "model": self.model,
+                    "name": self.name,
                     "protocolVersion": 67,
                     "rebootTimeoutSec": 30,
                     "semver": "v4.4.8",
@@ -269,7 +262,7 @@ class UnifiCamBase(metaclass=ABCMeta):
             "ubnt_avclient_paramAgreement",
             msg["messageId"],
             {
-                "authToken": self.args.token,
+                "authToken": self.token,
                 "features": await self.get_feature_flags(),
             },
         )
@@ -287,7 +280,7 @@ class UnifiCamBase(metaclass=ABCMeta):
                     if b != b"\x00":
                         version += chr(b)
                 self.logger.debug(f"Pretending to upgrade to: {version}")
-                self.args.fw_version = version
+                self.fw_version = version
 
     async def process_isp_settings(self, msg: AVClientRequest) -> AVClientResponse:
         payload = {
@@ -366,8 +359,10 @@ class UnifiCamBase(metaclass=ABCMeta):
                                 await self.start_video_stream(
                                     k, stream, destination=(host, int(port))
                                 )
-                            except ValueError:
-                                pass
+                            except ValueError as err:
+                                self.logger.exception(f"Exception {err=}, {type(err)=}")
+                            except Exception as err:
+                                self.logger.exception(f"Unexpected {err=}, {type(err)=}")
 
         return self.gen_response(
             "ChangeVideoSettings",
@@ -383,6 +378,7 @@ class UnifiCamBase(metaclass=ABCMeta):
                     "quality": 0,
                     "sampleRate": 11025,
                     "type": "aac",
+                    "volume": 0,
                     "volume": 0,
                 },
                 "firmwarePath": "/lib/firmware/",
@@ -617,7 +613,7 @@ class UnifiCamBase(metaclass=ABCMeta):
             "ChangeDeviceSettings",
             msg["messageId"],
             {
-                "name": self.args.name,
+                "name": self.name,
                 "timezone": "PST8PDT,M3.2.0,M11.1.0",
             },
         )
@@ -632,28 +628,28 @@ class UnifiCamBase(metaclass=ABCMeta):
                     "enableLogo": 1,
                     "enableReportdStatsLevel": 0,
                     "enableStreamerStatsLevel": 0,
-                    "tag": self.args.name,
+                    "tag": self.name,
                 },
                 "_2": {
                     "enableDate": 1,
                     "enableLogo": 1,
                     "enableReportdStatsLevel": 0,
                     "enableStreamerStatsLevel": 0,
-                    "tag": self.args.name,
+                    "tag": self.name,
                 },
                 "_3": {
                     "enableDate": 1,
                     "enableLogo": 1,
                     "enableReportdStatsLevel": 0,
                     "enableStreamerStatsLevel": 0,
-                    "tag": self.args.name,
+                    "tag": self.name,
                 },
                 "_4": {
                     "enableDate": 1,
                     "enableLogo": 1,
                     "enableReportdStatsLevel": 0,
                     "enableStreamerStatsLevel": 0,
-                    "tag": self.args.name,
+                    "tag": self.name,
                 },
                 "enableOverlay": 1,
                 "logoScale": 50,
@@ -674,7 +670,7 @@ class UnifiCamBase(metaclass=ABCMeta):
                 "dhcpLeasetime": 86400,
                 "dnsServer": "8.8.8.8 4.2.2.2",
                 "gateway": "192.168.103.1",
-                "ipAddress": self.args.ip,
+                "ipAddress": self.ip,
                 "linkDuplex": 1,
                 "linkSpeedMbps": 100,
                 "mode": "dhcp",
@@ -909,7 +905,7 @@ class UnifiCamBase(metaclass=ABCMeta):
         ]
 
         try:
-            output = subprocess.check_output(["ffmpeg", "-h", "full"])
+            output = subprocess.check_output(["ffmpeg", "-hide_banner", "-h", "full"])
             if b"stimeout" in output:
                 base_args.append("-stimeout 15000000")
             else:
@@ -928,14 +924,13 @@ class UnifiCamBase(metaclass=ABCMeta):
         if not has_spawned or is_dead:
             source = await self.get_stream_source(stream_index)
             cmd = (
-                "ffmpeg -nostdin -loglevel error -y"
+                f"ffmpeg -nostdin -loglevel error -y"
                 f" {self.get_base_ffmpeg_args(stream_index)} -rtsp_transport"
-                f' {self.args.rtsp_transport} -i "{source}"'
+                f" {self.rtsp_transport} -i '{source}'"
                 f" {self.get_extra_ffmpeg_args(stream_index)} -metadata"
-                f" streamName={stream_name} -f flv - | {sys.executable} -m"
-                " unifi.clock_sync"
-                f" {'--write-timestamps' if self._needs_flv_timestamps else ''} | nc"
-                f" {destination[0]} {destination[1]}"
+                f" streamName={stream_name} -f flv -"
+                f" | {sys.executable} -m unifi.clock_sync {'--write-timestamps' if self._needs_flv_timestamps else ''}"
+                f" | nc {destination[0]} {destination[1]}"
             )
 
             if is_dead:

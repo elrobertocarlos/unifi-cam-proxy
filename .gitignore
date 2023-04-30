@@ -10,3 +10,6 @@ MANIFEST.in
 .pyre/
 .vscode/settings.json
 .vscode/launch.json
+*.bin
+*.mp4
+*.flv
